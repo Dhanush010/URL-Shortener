@@ -58,3 +58,47 @@ class ShortenResponse(BaseModel):
     original_url: str = Field(..., examples=["https://www.example.com/very/long/url"])
     created_at: datetime = Field(..., examples=["2026-07-06T10:00:00Z"])
     expires_at: datetime | None = Field(None, examples=["2026-08-05T10:00:00Z"])
+
+
+class RecentClick(BaseModel):
+    """A single recent click event."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    clicked_at: datetime = Field(..., examples=["2026-07-06T12:30:00Z"])
+    user_agent: str | None = Field(None, examples=["Mozilla/5.0"])
+
+
+class URLStatsResponse(BaseModel):
+    """Analytics response for a short URL."""
+
+    short_code: str = Field(..., examples=["abc123"])
+    original_url: str = Field(..., examples=["https://example.com"])
+    click_count: int = Field(..., examples=[1423])
+    created_at: datetime = Field(..., examples=["2026-07-06T10:00:00Z"])
+    expires_at: datetime | None = Field(None, examples=[None])
+    recent_clicks: list[RecentClick] = Field(default_factory=list)
+
+
+class URLListItem(BaseModel):
+    """A single URL entry in a paginated list."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    short_code: str
+    short_url: str
+    original_url: str
+    click_count: int
+    created_at: datetime
+    expires_at: datetime | None
+    is_active: bool
+
+
+class PaginatedURLResponse(BaseModel):
+    """Paginated list of shortened URLs."""
+
+    items: list[URLListItem]
+    total: int = Field(..., examples=[150])
+    page: int = Field(..., examples=[1])
+    limit: int = Field(..., examples=[20])
+    pages: int = Field(..., examples=[8])

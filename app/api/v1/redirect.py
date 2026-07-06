@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -7,9 +7,29 @@ from app.exceptions import GoneError, NotFoundError
 from app.schemas.errors import ProblemDetail
 from app.services import cache_service
 from app.services.cache_service import CachedExpired
-from app.services.url_service import is_url_expired, resolve_url
+from app.services.rate_limiter import get_client_ip
+from app.services.url_service import (
+    hash_client_ip,
+    is_url_expired,
+    log_click_async,
+    resolve_url,
+)
 
 router = APIRouter()
+
+
+def _schedule_click_log(
+    background_tasks: BackgroundTasks,
+    request: Request,
+    short_code: str,
+) -> None:
+    """Fire-and-forget click logging for a successful redirect."""
+    background_tasks.add_task(
+        log_click_async,
+        short_code,
+        user_agent=request.headers.get("user-agent"),
+        ip_hash=hash_client_ip(get_client_ip(request)),
+    )
 
 
 @router.get(
@@ -18,7 +38,8 @@ router = APIRouter()
     description=(
         "Resolves a short code and redirects to the original URL with HTTP 301. "
         "Uses Redis cache-aside for hot lookups. Returns 404 if the code does not "
-        "exist, or 410 if expired or deactivated."
+        "exist, or 410 if expired or deactivated. Click events are logged "
+        "asynchronously."
     ),
     response_class=RedirectResponse,
     responses={
@@ -29,6 +50,8 @@ router = APIRouter()
 )
 async def redirect_to_url(
     code: str,
+    request: Request,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_db_session),
 ) -> RedirectResponse:
     """Redirect a short code to its original URL."""
@@ -40,6 +63,7 @@ async def redirect_to_url(
                 f"The short URL '{code}' has expired or been deactivated.",
                 instance=f"/{code}",
             )
+        _schedule_click_log(background_tasks, request, code)
         response = RedirectResponse(url=cached.original_url, status_code=301)
         response.headers["X-Cache"] = "HIT"
         return response
@@ -64,6 +88,7 @@ async def redirect_to_url(
         original_url=url_row.original_url,
         is_active=url_row.is_active,
     )
+    _schedule_click_log(background_tasks, request, code)
     response = RedirectResponse(url=url_row.original_url, status_code=301)
     response.headers["X-Cache"] = "MISS"
     return response
