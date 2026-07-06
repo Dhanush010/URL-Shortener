@@ -4,8 +4,11 @@ from typing import Any
 from fastapi import FastAPI
 from sqlalchemy import text
 
+from app.api.v1.redirect import router as redirect_router
+from app.api.v1.router import router as v1_router
 from app.config import get_settings
 from app.database import engine
+from app.exceptions import register_exception_handlers
 from app.redis_client import close_redis_pool, get_redis_client
 
 settings = get_settings()
@@ -24,6 +27,10 @@ app = FastAPI(
     version=settings.app_version,
     lifespan=lifespan,
 )
+
+register_exception_handlers(app)
+
+app.include_router(v1_router, prefix="/api/v1")
 
 
 @app.get(
@@ -58,3 +65,6 @@ async def health_check() -> dict[str, Any]:
         "redis": redis_status,
         "version": settings.app_version,
     }
+
+
+app.include_router(redirect_router)
