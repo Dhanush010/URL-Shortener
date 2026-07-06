@@ -1,0 +1,6 @@
+pytest==8.2.0
+pytest-asyncio==0.23.6
+pytest-cov==5.0.0
+testcontainers[postgresql,redis]==4.4.0
+faker==25.0.0
+locust==2.28.0
