@@ -10,6 +10,7 @@ from app.config import get_settings
 from app.database import engine
 from app.exceptions import register_exception_handlers
 from app.redis_client import close_redis_pool, get_redis_client
+from app.services.rate_limiter import RateLimitMiddleware
 
 settings = get_settings()
 
@@ -27,6 +28,8 @@ app = FastAPI(
     version=settings.app_version,
     lifespan=lifespan,
 )
+
+app.add_middleware(RateLimitMiddleware)
 
 register_exception_handlers(app)
 

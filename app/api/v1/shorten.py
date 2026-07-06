@@ -27,6 +27,10 @@ router = APIRouter()
             "model": ProblemDetail,
             "description": "Custom code already in use.",
         },
+        429: {
+            "model": ProblemDetail,
+            "description": "Rate limit exceeded.",
+        },
     },
 )
 async def shorten_url(

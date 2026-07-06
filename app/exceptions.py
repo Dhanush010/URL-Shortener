@@ -91,6 +91,24 @@ class ShortCodeGenerationError(AppError):
         )
 
 
+class RateLimitExceededError(AppError):
+    def __init__(self, *, retry_after: int, instance: str | None = None) -> None:
+        from app.config import get_settings
+
+        settings = get_settings()
+        self.retry_after = retry_after
+        super().__init__(
+            status=429,
+            title="Too Many Requests",
+            detail=(
+                f"Rate limit exceeded. Max {settings.rate_limit_requests} "
+                f"requests per minute per IP."
+            ),
+            type_slug="rate-limited",
+            instance=instance,
+        )
+
+
 def _problem_response(
     *,
     status: int,
@@ -98,17 +116,42 @@ def _problem_response(
     detail: str,
     type_slug: str,
     instance: str | None,
+    extra: dict | None = None,
+    headers: dict | None = None,
 ) -> JSONResponse:
+    content = {
+        "type": f"{PROBLEM_BASE_URL}/{type_slug}",
+        "title": title,
+        "status": status,
+        "detail": detail,
+        "instance": instance,
+    }
+    if extra:
+        content.update(extra)
     return JSONResponse(
         status_code=status,
-        content={
-            "type": f"{PROBLEM_BASE_URL}/{type_slug}",
-            "title": title,
-            "status": status,
-            "detail": detail,
-            "instance": instance,
-        },
+        content=content,
         media_type="application/problem+json",
+        headers=headers,
+    )
+
+
+def rate_limit_exceeded_response(retry_after: int, instance: str) -> JSONResponse:
+    """Build an RFC 7807 response for rate limit violations."""
+    from app.config import get_settings
+
+    settings = get_settings()
+    return _problem_response(
+        status=429,
+        title="Too Many Requests",
+        detail=(
+            f"Rate limit exceeded. Max {settings.rate_limit_requests} "
+            f"requests per minute per IP."
+        ),
+        type_slug="rate-limited",
+        instance=instance,
+        extra={"retry_after": retry_after},
+        headers={"Retry-After": str(retry_after)},
     )
 
 
@@ -117,12 +160,21 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(AppError)
     async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
+        extra: dict | None = None
+        headers: dict | None = None
+
+        if isinstance(exc, RateLimitExceededError):
+            extra = {"retry_after": exc.retry_after}
+            headers = {"Retry-After": str(exc.retry_after)}
+
         return _problem_response(
             status=exc.status,
             title=exc.title,
             detail=exc.detail,
             type_slug=exc.type_slug,
             instance=exc.instance or str(request.url.path),
+            extra=extra,
+            headers=headers,
         )
 
     @app.exception_handler(RequestValidationError)

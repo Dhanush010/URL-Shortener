@@ -12,3 +12,8 @@ class ProblemDetail(BaseModel):
         examples=["The provided URL is not a valid HTTP/HTTPS URL."],
     )
     instance: str | None = Field(None, examples=["/api/v1/shorten"])
+    retry_after: int | None = Field(
+        None,
+        examples=[42],
+        description="Seconds until the client may retry (rate limit responses only).",
+    )
