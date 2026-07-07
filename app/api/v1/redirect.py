@@ -1,8 +1,7 @@
-from fastapi import APIRouter, BackgroundTasks, Depends, Request
+from fastapi import APIRouter, BackgroundTasks, Request
 from fastapi.responses import RedirectResponse
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import get_db_session
+from app.database import async_session_factory
 from app.exceptions import GoneError, NotFoundError
 from app.schemas.errors import ProblemDetail
 from app.services import cache_service
@@ -52,7 +51,6 @@ async def redirect_to_url(
     code: str,
     request: Request,
     background_tasks: BackgroundTasks,
-    session: AsyncSession = Depends(get_db_session),
 ) -> RedirectResponse:
     """Redirect a short code to its original URL."""
     cached = await cache_service.get(code)
@@ -68,26 +66,28 @@ async def redirect_to_url(
         response.headers["X-Cache"] = "HIT"
         return response
 
-    url_row = await resolve_url(session, code)
+    async with async_session_factory() as session:
+        url_row = await resolve_url(session, code)
 
-    if url_row is None:
-        raise NotFoundError(
-            f"No URL found for short code '{code}'.",
-            instance=f"/{code}",
+        if url_row is None:
+            raise NotFoundError(
+                f"No URL found for short code '{code}'.",
+                instance=f"/{code}",
+            )
+
+        if not url_row.is_active or is_url_expired(url_row):
+            await cache_service.set_negative(code)
+            raise GoneError(
+                f"The short URL '{code}' has expired or been deactivated.",
+                instance=f"/{code}",
+            )
+
+        await cache_service.set(
+            code,
+            original_url=url_row.original_url,
+            is_active=url_row.is_active,
         )
 
-    if not url_row.is_active or is_url_expired(url_row):
-        await cache_service.set_negative(code)
-        raise GoneError(
-            f"The short URL '{code}' has expired or been deactivated.",
-            instance=f"/{code}",
-        )
-
-    await cache_service.set(
-        code,
-        original_url=url_row.original_url,
-        is_active=url_row.is_active,
-    )
     _schedule_click_log(background_tasks, request, code)
     response = RedirectResponse(url=url_row.original_url, status_code=301)
     response.headers["X-Cache"] = "MISS"

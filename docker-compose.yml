@@ -50,5 +50,15 @@ services:
       timeout: 3s
       retries: 5
 
+  loadtest:
+    profiles: [loadtest]
+    image: python:3.11-slim
+    working_dir: /app
+    volumes:
+      - .:/app
+    depends_on:
+      - app
+    entrypoint: ["sh", "scripts/run_locust.sh"]
+
 volumes:
   postgres_data:
