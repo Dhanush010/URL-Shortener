@@ -1,1 +1,49 @@
-# Test environment compose — implemented in Phase 5
+services:
+  postgres-test:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: urlshortener_test
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d urlshortener_test"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+
+  redis-test:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+
+  test:
+    build: .
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+    environment:
+      - PYTHONPATH=/app
+      - APP_ENV=testing
+      - BASE_URL=http://testserver
+      - SECRET_KEY=test-secret-key
+      - DATABASE_URL=postgresql+asyncpg://user:password@postgres-test:5432/urlshortener_test
+      - REDIS_URL=redis://redis-test:6379/0
+      - RATE_LIMIT_REQUESTS=100
+      - RATE_LIMIT_WINDOW_SECONDS=60
+    volumes:
+      - .:/app
+    command: >
+      sh -c "pip install --no-cache-dir
+      --trusted-host pypi.org
+      --trusted-host pypi.python.org
+      --trusted-host files.pythonhosted.org
+      -r requirements-dev.txt &&
+      pytest tests/ -v
+      --cov=app
+      --cov-report=term-missing
+      --cov-fail-under=80"
