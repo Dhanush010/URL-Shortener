@@ -71,32 +71,45 @@ Results land in `results/load_test_stats.csv` (and `results/load_test_failures.c
 
 **Design target:** p95 &lt; 10 ms on cache hits in production (Redis-only redirect path, no DB session opened on cache hit).
 
-Local Docker will be slower than Railway because of single-worker uvicorn, click-event writes under load, and container overhead. Re-run the redirect benchmark after deploy to validate production latency.
+Local Docker will be slower than a cloud deployment because of single-worker uvicorn, click-event writes under load, and container overhead. Re-run the redirect benchmark after deploy to validate production latency.
 
-## Deploy to Railway
+## Deploy free stack (Render + Supabase + Upstash)
 
-1. Push this repo to GitHub (see commands below).
-2. Go to [railway.app](https://railway.app) → **New Project** → **Deploy from GitHub**.
-3. Add the **PostgreSQL** plugin → Railway sets `DATABASE_URL` (convert to `postgresql+asyncpg://...` if needed).
-4. Add the **Redis** plugin → Railway sets `REDIS_URL`.
-5. Set environment variables:
+### 1) Provision managed services
 
-   | Variable | Value |
-   |----------|-------|
-   | `APP_ENV` | `production` |
-   | `BASE_URL` | `https://your-app.up.railway.app` |
-   | `SECRET_KEY` | strong random secret |
-   | `DATABASE_URL` | `postgresql+asyncpg://...` (async driver) |
+1. Create a free [Supabase](https://supabase.com) project (PostgreSQL).
+2. Create a free [Upstash](https://upstash.com) Redis database.
+3. Push this repository to GitHub.
 
-6. Railway detects the `Dockerfile` and deploys. Migrations run on startup via `alembic upgrade head`.
-7. Smoke test:
+### 2) Configure environment variables on Render
 
-   ```bash
-   curl https://your-app.up.railway.app/health
-   curl -X POST https://your-app.up.railway.app/api/v1/shorten \
-     -H "Content-Type: application/json" \
-     -d '{"url": "https://example.com"}'
-   ```
+Create a new **Web Service** on [Render](https://render.com) from this GitHub repo, then set:
+
+| Variable | Value |
+|----------|-------|
+| `APP_ENV` | `production` |
+| `BASE_URL` | `https://your-render-service.onrender.com` |
+| `SECRET_KEY` | strong random secret |
+| `DATABASE_URL` | Supabase Postgres connection string converted to `postgresql+asyncpg://...` |
+| `REDIS_URL` | Upstash Redis URL (`rediss://...`) |
+
+Notes:
+- For Supabase, start with its provided connection string and change prefix `postgresql://` to `postgresql+asyncpg://`.
+- This codebase currently uses `redis-py` (native Redis protocol), so use Upstash's Redis URL (`rediss://...`) for `REDIS_URL`.
+- If you want to use Upstash REST API directly, add separate REST integration code and credentials.
+
+### 3) Deploy on Render
+
+1. Render will build using the `Dockerfile`.
+2. Startup command runs migrations: `alembic upgrade head`, then starts uvicorn.
+3. After deployment, smoke test:
+
+```bash
+curl https://your-render-service.onrender.com/health
+curl -X POST https://your-render-service.onrender.com/api/v1/shorten \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://example.com"}'
+```
 
 ## CI
 
@@ -110,4 +123,4 @@ GitHub Actions runs on every push/PR to `main` or `master`:
 - FastAPI (Python 3.11)
 - PostgreSQL 15 (async SQLAlchemy 2.0 + asyncpg)
 - Redis 7 (redis-py async)
-- Alembic, Pytest + testcontainers, Locust, Docker, Railway
+- Alembic, Pytest + testcontainers, Locust, Docker, Render, Supabase, Upstash

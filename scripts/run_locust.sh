@@ -1,5 +1,5 @@
 #!/bin/sh
-# Invoked inside the loadtest container.
+# Invoked inside the loadtest container (POSIX sh).
 
 set -e
 
