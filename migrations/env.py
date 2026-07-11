@@ -7,7 +7,7 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.config import get_settings
-from app.database import Base
+from app.database import Base, _asyncpg_connect_args
 from app.models import URL  # noqa: F401 — register models with metadata
 
 config = context.config
@@ -45,6 +45,7 @@ async def run_async_migrations() -> None:
     connectable = create_async_engine(
         settings.database_url,
         poolclass=pool.NullPool,
+        connect_args=_asyncpg_connect_args(settings.database_url),
     )
 
     async with connectable.connect() as connection:

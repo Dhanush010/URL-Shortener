@@ -12,10 +12,19 @@ from app.config import get_settings
 
 settings = get_settings()
 
+
+def _asyncpg_connect_args(database_url: str) -> dict:
+    """Disable prepared statements for Supabase PgBouncer transaction pooler."""
+    if "pooler.supabase.com" in database_url and ":6543" in database_url:
+        return {"statement_cache_size": 0}
+    return {}
+
+
 engine: AsyncEngine = create_async_engine(
     settings.database_url,
     echo=settings.is_development,
     pool_pre_ping=True,
+    connect_args=_asyncpg_connect_args(settings.database_url),
 )
 
 async_session_factory = async_sessionmaker(
